@@ -1,17 +1,26 @@
-//
-//  FinderCutPasteApp.swift
-//  FinderCutPaste
-//
-//  Created by Kyle Y on 2026-08-07.
-//
-
 import SwiftUI
 
 @main
-struct FinderCutPasteApp: App {
+struct FinderCutPastePoCApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            PermissionStatusView()
+                .fixedSize()
         }
+        .windowResizability(.contentSize)
+    }
+}
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        FinderCutPasteStandalone.shared.start()
+        NSLog("FinderCutPastePoC: started")
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        FinderCutPasteStandalone.shared.stop()
+        NSLog("FinderCutPastePoC: stopping")
     }
 }
