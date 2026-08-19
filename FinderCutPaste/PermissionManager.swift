@@ -9,6 +9,8 @@ import ApplicationServices
 import Combine
 
 final class PermissionManager: ObservableObject {
+    static let shared = PermissionManager()
+    
     @Published private(set) var hasAccessibilityGranted: Bool = AXIsProcessTrusted()
     
     // MARK: - State
