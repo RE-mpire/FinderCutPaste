@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 @main
 struct FinderCutPastePoCApp: App {
@@ -14,13 +15,32 @@ struct FinderCutPastePoCApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    var pm = PermissionManager.shared
+    var tap = EventTap()
+    
+    private var permissionCancellable: AnyCancellable?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        FinderCutPasteStandalone.shared.start()
-        NSLog("FinderCutPastePoC: started")
+        permissionCancellable = pm.$hasAccessibilityGranted
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] granted in
+                guard let self else { return }
+                if granted {
+                    self.tap.installTap()
+                    NSLog("FinderCutPaste: started")
+                } else {
+                    self.tap.removeTap()
+                    NSLog("FinderCutPaste: Accessibility not granted — tap removed")
+                }
+            }
+ 
+        if !pm.hasAccessibilityGranted {
+            pm.requestAccessibilityPermissions()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        FinderCutPasteStandalone.shared.stop()
-        NSLog("FinderCutPastePoC: stopping")
+        tap.removeTap()
     }
 }
