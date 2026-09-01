@@ -28,9 +28,11 @@ final class EventTap {
     private var runSource: CFRunLoopSource?
 
     // MARK: - Install / remove
-    private func installTap() {
+    func installTap() {
         guard tap == nil else { return } // already installed
+        NSLog("FinderCutPaste: installing event tap")
         guard let tap = createTap() else { return }
+        NSLog("FinderCutPaste: event tap created")
 
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
             NSLog("FinderCutPaste: failed to create run loop source for event tap")
@@ -114,7 +116,6 @@ final class EventTap {
     /// Whether this key event is a candidate for our Cmd+X/Cmd+V handling:
     /// Cmd held alone, Finder is frontmost, and we're not inside a text field.
     private func shouldIntercept(_ event: CGEvent) -> Bool {
-        guard AXIsProcessTrusted() else { return false }
 
         let flags = event.flags
         guard flags.contains(.maskCommand),
@@ -129,20 +130,6 @@ final class EventTap {
         }
 
         return !isEditingText()
-    }
-
-    private func handlePaste(event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard !markedURLs.isEmpty else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard NSPasteboard.general.changeCount == markedChangeCount else {
-            clearMarks()
-            return Unmanaged.passUnretained(event)
-        }
-
-        pasteAsync()
-        return nil
     }
     
     private func isEditingText() -> Bool {
@@ -160,6 +147,54 @@ final class EventTap {
               let role = roleRef as? String
         else { return false }
         return ["AXTextField", "AXTextArea", "AXComboBox", "AXSecureTextField"].contains(role)
+    }
+    
+    // MARK: - Cut
+    private func cutAsync() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let urls = FinderBridge.selectionURLs(), !urls.isEmpty else {
+                DispatchQueue.main.async { self?.clearMarks() }
+                return
+            }
+            DispatchQueue.main.async { self?.applyCut(urls) }
+        }
+    }
+
+    private func applyCut(_ urls: [URL]) {
+        markedURLs = urls
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects(urls as [NSURL])
+        markedChangeCount = pb.changeCount
+        NSLog("FinderCutPaste: cut \(urls.count) item(s)")
+    }
+
+    // MARK: - Paste
+    private func handlePaste(event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard !markedURLs.isEmpty else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard NSPasteboard.general.changeCount == markedChangeCount else {
+            clearMarks()
+            return Unmanaged.passUnretained(event)
+        }
+
+        pasteAsync()
+        return nil
+    }
+    
+    private func pasteAsync() {
+        let urls = markedURLs
+        guard !urls.isEmpty else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let success = FinderBridge.moveViaFinder(urls: urls)
+            DispatchQueue.main.async {
+                NSLog("FinderCutPaste: Finder move \(success ? "succeeded" : "failed")")
+                self?.clearMarks()
+            }
+        }
     }
     
     private func clearMarks() {
